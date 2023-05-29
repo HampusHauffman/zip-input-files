@@ -1,0 +1,26 @@
+[package]
+name = "trunk-template"
+version = "0.1.0"
+edition = "2021"
+description = "Template for starting a Yew project using Trunk"
+readme = "README.md"
+repository = "https://github.com/yewstack/yew-trunk-minimal-template"
+license = "MIT OR Apache-2.0"
+keywords = ["yew", "trunk"]
+categories = ["gui", "wasm", "web-programming"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+yew = { version="0.20", features=["csr"] }
+js-sys = "0.3.63"
+base64 = "0.21.2"
+gloo = "0.8.0"
+flate2 = "1.0.26"
+zip = {version = "0.6.6",default-features = false, features = [ "deflate" ]}
+
+
+[dependencies.web-sys]
+version = "0.3.63"
+features = ["File", "DragEvent", "DataTransfer", "Document", "Url", "Node", 
+	"FileSystem","FileSystemDirectoryEntry","FileSystemEntry","FileSystemEntryCallback",
+	"FileSystemDirectoryHandle","FileSystemDirectoryReader","FileSystemFileEntry","HtmlInputElement"]
