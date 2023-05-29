@@ -10,15 +10,16 @@ use gloo::file::Blob;
 use gloo::file::ObjectUrl;
 use std::collections::HashMap;
 use std::io::prelude::*;
+use std::io::Cursor;
 use web_sys::window;
 use web_sys::File;
 use web_sys::FileList;
 use web_sys::FileSystemEntry;
-use web_sys::HtmlElement;
 use web_sys::{Event, HtmlInputElement};
 use yew::html::TargetCast;
 use yew::{html, Component, Context, Html};
 use zip::write::FileOptions;
+use zip::ZipWriter;
 
 struct FileDetails {
     name: String,
@@ -27,7 +28,7 @@ struct FileDetails {
 }
 
 pub enum Msg {
-    Loaded(String, String, Option<ObjectUrl>),
+    Loaded(String, String, Vec<u8>),
     Files(Vec<(File, FileSystemEntry)>),
 }
 
@@ -49,23 +50,34 @@ impl Component for App {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Loaded(file_name, file_type, object_url) => {
+            Msg::Loaded(file_name, file_type, v) => {
+                let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+                zip.start_file(
+                    format!("{}.gzip", file_name.as_str()),
+                    FileOptions::default(),
+                )
+                .unwrap();
+                zip.write_all(v.as_slice()).unwrap();
+                let l = zip.finish().unwrap().into_inner();
+
+                let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
                 self.file.push(FileDetails {
-                    object_url: object_url.clone(),
+                    object_url: Some(object_url.clone()),
                     file_type,
                     name: file_name.clone(),
                 });
+
                 let win = window().unwrap();
                 let doc = win.document().unwrap();
+
                 let dl_link = doc.create_element("a").unwrap();
-                dl_link.set_attribute("href", &object_url.unwrap()).unwrap();
+                dl_link.set_attribute("href", &object_url).unwrap();
                 dl_link
-                    .set_attribute("download", format!("{}.gzip", file_name.as_str()).as_str())
+                    .set_attribute("download", format!("{}.zip", file_name.as_str()).as_str())
                     .unwrap();
                 dl_link.set_inner_html("CLICK ME");
                 let body = doc.body().unwrap();
-                let c = body.append_child(&dl_link).unwrap();
-                // Trigger the click event on the download link
+                let _ = body.append_child(&dl_link).unwrap();
 
                 self.readers.remove(&file_name);
                 true
@@ -74,7 +86,7 @@ impl Component for App {
                 for file in files.into_iter() {
                     let file_name = file.0.name();
                     let file_type = file.0.type_();
-                    log!("{}",file.1);
+                    log!("{}", file.1);
                     let task = {
                         let link = ctx.link().clone();
                         let file_name = file_name.clone();
@@ -85,10 +97,11 @@ impl Component for App {
                                 .write(Vec::new(), Compression::default());
                             e.write_all(&res.unwrap()).unwrap();
 
-                            let compressed_bytes = e.finish().unwrap();
-                            let object_url =
-                                ObjectUrl::from(Blob::new(compressed_bytes.as_slice()));
-                            link.send_message(Msg::Loaded(file_name, file_type, Some(object_url)))
+                            link.send_message(Msg::Loaded(
+                                file_name,
+                                file_type,
+                                e.finish().unwrap(),
+                            ))
                         })
                     };
                     let w = window().unwrap().document().unwrap();
