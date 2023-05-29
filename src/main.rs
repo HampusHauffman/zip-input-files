@@ -1,16 +1,21 @@
+//allow dead code
+#[allow(dead_code)]
 use flate2::write::GzEncoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use flate2::GzBuilder;
+use gloo::console::log;
 use gloo::file::callbacks::FileReader;
 use gloo::file::Blob;
-use gloo::file::File;
 use gloo::file::ObjectUrl;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use web_sys::window;
+use web_sys::File;
+use web_sys::FileList;
+use web_sys::FileSystemEntry;
 use web_sys::HtmlElement;
-use web_sys::{Event, FileList, HtmlInputElement};
+use web_sys::{Event, HtmlInputElement};
 use yew::html::TargetCast;
 use yew::{html, Component, Context, Html};
 use zip::write::FileOptions;
@@ -23,7 +28,7 @@ struct FileDetails {
 
 pub enum Msg {
     Loaded(String, String, Option<ObjectUrl>),
-    Files(Vec<File>),
+    Files(Vec<(File, FileSystemEntry)>),
 }
 
 pub struct App {
@@ -67,14 +72,14 @@ impl Component for App {
             }
             Msg::Files(files) => {
                 for file in files.into_iter() {
-                    let file_name = file.name();
-                    let file_type = file.raw_mime_type();
-
+                    let file_name = file.0.name();
+                    let file_type = file.0.type_();
+                    log!("{}",file.1);
                     let task = {
                         let link = ctx.link().clone();
                         let file_name = file_name.clone();
-
-                        gloo::file::callbacks::read_as_bytes(&file, move |res| {
+                        // Handle Filesystem entrie and read as bytes
+                        gloo::file::callbacks::read_as_bytes(&file.0.into(), move |res| {
                             let mut e = GzBuilder::new()
                                 .filename(file_name.as_str())
                                 .write(Vec::new(), Compression::default());
@@ -101,11 +106,11 @@ impl Component for App {
                 type="file"
                 accept="*"
                 multiple={true}
+                webkitdirectory="true"
                 onchange={ctx.link().callback(move |e: Event| {
                     let input: HtmlInputElement = e.target_unchecked_into();
                     Self::upload_files(input.files())
                     })}
-                   // webkitdirectory="true"
             />
         }
     }
@@ -116,11 +121,13 @@ impl App {
         let mut result = Vec::new();
 
         if let Some(files) = files {
-            let files = js_sys::try_iter(&files)
-                .unwrap()
-                .unwrap()
-                .map(|v| web_sys::File::from(v.unwrap()))
-                .map(File::from);
+            log!("Files: {:?}", &files);
+            let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
+                (
+                    web_sys::File::from(v.clone().unwrap()),
+                    web_sys::FileSystemEntry::from(v.unwrap()),
+                )
+            });
             result.extend(files);
         }
         Msg::Files(result)
