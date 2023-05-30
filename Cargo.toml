@@ -18,6 +18,9 @@ gloo = "0.8.0"
 flate2 = "1.0.26"
 zip = {version = "0.6.6",default-features = false, features = [ "deflate" ]}
 
+futures = "0.3"
+wasm-bindgen-futures = "0.4"
+
 
 [dependencies.web-sys]
 version = "0.3.63"
