@@ -56,11 +56,13 @@ impl Component for App {
             Msg::Loaded(file_name, file_type, v, last) => {
                 let mut zip = self.zip.lock().unwrap();
                 zip.start_file(
-                    format!("{}", file_name.as_str()),
+                    format!("{}{}", file_name.as_str(), last),
                     FileOptions::default().compression_method(zip::CompressionMethod::DEFLATE),
                 )
                 .unwrap();
                 zip.write_all(v.as_slice()).unwrap();
+                log!("Zipped file ", &file_name);
+                log!("last ", last);
                 if last {
                     let l = zip.finish().unwrap().into_inner();
 
@@ -92,7 +94,6 @@ impl Component for App {
                     let count = count.clone();
                     let file_name = file.0.name();
                     let file_type = file.0.type_();
-                    log!("{}", file.1);
                     let task = {
                         let link = ctx.link().clone();
                         let file_name = file_name.clone();
@@ -100,6 +101,8 @@ impl Component for App {
                         gloo::file::callbacks::read_as_bytes(&file.0.into(), move |res| {
                             *count.lock().unwrap() -= 1;
                             let last = *count.lock().unwrap() == 0;
+                            log!("count: ", *count.lock().unwrap());
+                            log!("file: ", &file_name);
                             link.send_message(Msg::Loaded(file_name, file_type, res.unwrap(), last))
                         })
                     };
@@ -131,7 +134,6 @@ impl Component for App {
 impl App {
     fn upload_files(files: Option<FileList>) -> Msg {
         let mut result = Vec::new();
-
         if let Some(files) = files {
             log!("Files: {:?}", &files);
             let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
