@@ -1,109 +1,151 @@
-use std::{
-    io::{Cursor, Write},
-    sync::{Arc, Mutex},
-};
+//allow dead code
+use flate2::write::GzEncoder;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+use flate2::GzBuilder;
+use gloo::console::log;
+use gloo::file::callbacks::FileReader;
+use gloo::file::Blob;
+use gloo::file::ObjectUrl;
+use std::collections::HashMap;
+use std::io::prelude::*;
+use std::io::Cursor;
+use std::sync::Arc;
+use std::sync::Mutex;
+use web_sys::window;
+use web_sys::File;
+use web_sys::FileList;
+use web_sys::FileSystemEntry;
+use web_sys::{Event, HtmlInputElement};
+use yew::html::TargetCast;
+use yew::{html, Component, Context, Html};
+use zip::write::FileOptions;
+use zip::ZipWriter;
 
-use gloo::{console::log, file::callbacks::FileReader};
-use web_sys::{FileList, HtmlInputElement};
-use yew::prelude::*;
-use zip::{write::FileOptions, ZipWriter};
+struct FileDetails {
+    name: String,
+    file_type: String,
+    object_url: Option<ObjectUrl>,
+}
 
-fn zip(
-    file_list: FileList,
+pub enum Msg {
+    Loaded(String, String, Vec<u8>, bool),
+    Files(Vec<(File, FileSystemEntry)>),
+}
+
+pub struct App {
+    readers: HashMap<String, FileReader>,
+    file: Vec<FileDetails>,
     zip: Arc<Mutex<ZipWriter<Cursor<Vec<u8>>>>>,
-    done: Callback<bool>,
-) -> Vec<FileReader> {
-    log!("zipping");
-    let mut file_reader = Vec::new();
-    let count = Arc::new(Mutex::new(0));
-    let file_len = file_list.length();
+}
 
-    for i in 0..file_len {
-        if let Some(file) = file_list.get(i) {
-            let cc = count.clone();
-            let name = file.name();
-            zip.lock()
-                .unwrap()
-                .start_file(
-                    name.as_str(),
+impl Component for App {
+    type Message = Msg;
+    type Properties = ();
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            readers: HashMap::default(),
+            file: Vec::default(),
+            zip: Arc::new(Mutex::new(ZipWriter::new(Cursor::new(Vec::new())))),
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            Msg::Loaded(file_name, file_type, v, last) => {
+                let mut zip = self.zip.lock().unwrap();
+                zip.start_file(
+                    format!("{}", file_name.as_str()),
                     FileOptions::default().compression_method(zip::CompressionMethod::DEFLATE),
                 )
                 .unwrap();
-            let zip_c = zip.clone();
-            let d = done.clone();
-            log!("read as bytes1");
-            let f = gloo::file::callbacks::read_as_bytes(&file.into(), move |res| {
-                log!("read as bytes");
-                let mut z = zip_c.lock().unwrap();
-                let _ = z.start_file(
-                    name.as_str(),
-                    FileOptions::default().compression_method(zip::CompressionMethod::DEFLATE),
-                );
-                let _ = z.write_all(res.unwrap().as_slice());
-                *cc.lock().unwrap() += 1;
-                if *cc.lock().unwrap() == file_len {
-                    d.emit(true);
+                zip.write_all(v.as_slice()).unwrap();
+                if last {
+                    let l = zip.finish().unwrap().into_inner();
+
+                    let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
+                    self.file.push(FileDetails {
+                        object_url: Some(object_url.clone()),
+                        file_type,
+                        name: file_name.clone(),
+                    });
+
+                    let win = window().unwrap();
+                    let doc = win.document().unwrap();
+
+                    let dl_link = doc.create_element("a").unwrap();
+                    dl_link.set_attribute("href", &object_url).unwrap();
+                    dl_link
+                        .set_attribute("download", format!("{}.zip", file_name.as_str()).as_str())
+                        .unwrap();
+                    dl_link.set_inner_html(format!("{}.zip", file_name.as_str()).as_str());
+                    let body = doc.body().unwrap();
+                    let _ = body.append_child(&dl_link).unwrap();
                 }
+                self.readers.remove(&file_name);
+                true
+            }
+            Msg::Files(files) => {
+                let count = Arc::new(Mutex::new(files.len()));
+                for file in files.into_iter() {
+                    let count = count.clone();
+                    let file_name = file.0.name();
+                    let file_type = file.0.type_();
+                    log!("{}", file.1);
+                    let task = {
+                        let link = ctx.link().clone();
+                        let file_name = file_name.clone();
+                        // Handle Filesystem entrie and read as bytes
+                        gloo::file::callbacks::read_as_bytes(&file.0.into(), move |res| {
+                            *count.lock().unwrap() -= 1;
+                            let last = *count.lock().unwrap() == 0;
+                            link.send_message(Msg::Loaded(file_name, file_type, res.unwrap(), last))
+                        })
+                    };
+                    let w = window().unwrap().document().unwrap();
+                    self.readers.insert(file_name, task);
+                }
+                true
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        html! {
+            <input
+                id="file-upload"
+                type="file"
+                accept="*"
+                multiple={true}
+                webkitdirectory="true"
+                onchange={ctx.link().callback(move |e: Event| {
+                    let input: HtmlInputElement = e.target_unchecked_into();
+                    Self::upload_files(input.files())
+                    })}
+            />
+        }
+    }
+}
+
+impl App {
+    fn upload_files(files: Option<FileList>) -> Msg {
+        let mut result = Vec::new();
+
+        if let Some(files) = files {
+            log!("Files: {:?}", &files);
+            let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
+                (
+                    web_sys::File::from(v.clone().unwrap()),
+                    web_sys::FileSystemEntry::from(v.unwrap()),
+                )
             });
-            file_reader.push(f);
+            result.extend(files);
         }
-    }
-    file_reader
-}
-#[function_component]
-pub fn App() -> Html {
-    let z = Arc::new(Mutex::new(ZipWriter::new(Cursor::new(Vec::new()))));
-    let zc = z.clone();
-    let dont_drop_file_reader = Arc::new(Mutex::new(Vec::new()));
-
-    let on_files_zipped: Callback<bool> = Callback::from(move |_| {
-        log!("done");
-        let _ = zc.lock().unwrap().finish();
-    });
-    let on_files_uploaded: Callback<FileList> = Callback::from(move |files: FileList| {
-        log!("files uploaded");
-        let l = zip(files, z.clone(), on_files_zipped.clone());
-        dont_drop_file_reader.lock().unwrap().extend(l); // Nee
-    });
-
-    html! {
-        <FileUpload {on_files_uploaded} />
+        Msg::Files(result)
     }
 }
 
-#[function_component]
-pub fn Zip() -> Html {
-    html! {}
-}
-
-#[derive(Properties, PartialEq)]
-pub struct FileUploadProps {
-    pub on_files_uploaded: Callback<FileList>,
-}
-
-#[function_component()]
-pub fn FileUpload(props: &FileUploadProps) -> Html {
-    let files_uploaded = props.on_files_uploaded.clone();
-    let onchange = Callback::from(move |e: Event| {
-        let input: HtmlInputElement = e.target_unchecked_into();
-        if let Some(pat) = input.files() {
-            files_uploaded.emit(pat);
-        }
-
-        // Self::upload_files(input.files())
-    });
-
-    html! {
-        <input
-            id="file-upload"
-            type="file"
-            accept="*"
-            multiple={true}
-            webkitdirectory="true"
-            onchange={ onchange }
-        />
-    }
-}
 fn main() {
     yew::Renderer::<App>::new().render();
 }
