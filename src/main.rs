@@ -32,6 +32,7 @@ pub struct App {
     pub comp_data: Arc<Mutex<Vec<u8>>>,
     pub readers: Arc<Mutex<HashMap<String, FileReader>>>,
     pub zip: Arc<Mutex<ZipWriter<Cursor<Vec<u8>>>>>,
+    pub object_urls: Vec<ObjectUrl>,
 }
 
 impl Component for App {
@@ -43,12 +44,14 @@ impl Component for App {
             comp_data: Arc::new(Mutex::new(Vec::new())),
             readers: Arc::new(Mutex::new(HashMap::default())),
             zip: Arc::new(Mutex::new(ZipWriter::new(Cursor::new(Vec::new())))),
+            object_urls: Vec::new(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::Loaded(object_url) => {
+                self.object_urls.push(object_url.clone());
                 let win = window().unwrap();
                 let doc = win.document().unwrap();
 
