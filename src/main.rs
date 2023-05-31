@@ -1,21 +1,22 @@
+mod zip_wasm;
+
+use futures::FutureExt;
 use gloo::console::log;
 use gloo::file::callbacks::FileReader;
-use gloo::file::Blob;
 use gloo::file::ObjectUrl;
-use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::prelude::*;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::sync::Mutex;
 use web_sys::window;
 use web_sys::File;
-use web_sys::FileList;
 use web_sys::{Event, HtmlInputElement};
 use yew::html::TargetCast;
+use yew::Callback;
 use yew::{html, Component, Context, Html};
-use zip::write::FileOptions;
 use zip::ZipWriter;
+
+use crate::zip_wasm::ZipWasm;
 
 struct FileDetails {
     name: String,
@@ -23,14 +24,14 @@ struct FileDetails {
 }
 
 pub enum Msg {
-    Loaded(String, Vec<u8>, bool),
+    Loaded(ObjectUrl),
     Files(Vec<(File, String)>),
 }
 
 pub struct App {
-    readers: HashMap<String, FileReader>,
-    file: Vec<FileDetails>,
-    zip: Arc<Mutex<ZipWriter<Cursor<Vec<u8>>>>>,
+    pub comp_data: Arc<Mutex<Vec<u8>>>,
+    pub readers: Arc<Mutex<HashMap<String, FileReader>>>,
+    pub zip: Arc<Mutex<ZipWriter<Cursor<Vec<u8>>>>>,
 }
 
 impl Component for App {
@@ -39,46 +40,26 @@ impl Component for App {
 
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
-            readers: HashMap::default(),
-            file: Vec::default(),
+            comp_data: Arc::new(Mutex::new(Vec::new())),
+            readers: Arc::new(Mutex::new(HashMap::default())),
             zip: Arc::new(Mutex::new(ZipWriter::new(Cursor::new(Vec::new())))),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Loaded(file_name, v, last) => {
-                let mut zip = self.zip.lock().unwrap();
-                zip.start_file(
-                    format!("{}", file_name.as_str()),
-                    FileOptions::default().compression_method(zip::CompressionMethod::DEFLATE),
-                )
-                .unwrap();
-                zip.write_all(v.as_slice()).unwrap();
-                log!("Zipped file ", &file_name);
-                log!("last ", last);
-                if last {
-                    let l = zip.finish().unwrap().into_inner();
+            Msg::Loaded(object_url) => {
+                let win = window().unwrap();
+                let doc = win.document().unwrap();
 
-                    let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
-                    self.file.push(FileDetails {
-                        object_url: Some(object_url.clone()),
-                        name: file_name.clone(),
-                    });
-
-                    let win = window().unwrap();
-                    let doc = win.document().unwrap();
-
-                    let dl_link = doc.create_element("a").unwrap();
-                    dl_link.set_attribute("href", &object_url).unwrap();
-                    dl_link
-                        .set_attribute("download", format!("{}.zip", file_name.as_str()).as_str())
-                        .unwrap();
-                    dl_link.set_inner_html(format!("{}.zip", file_name.as_str()).as_str());
-                    let body = doc.body().unwrap();
-                    let _ = body.append_child(&dl_link).unwrap();
-                }
-                self.readers.remove(&file_name);
+                let dl_link = doc.create_element("a").unwrap();
+                dl_link.set_attribute("href", &object_url).unwrap();
+                dl_link
+                    .set_attribute("download", format!("done.zip").as_str())
+                    .unwrap();
+                dl_link.set_inner_html(format!("don.zip").as_str());
+                let body = doc.body().unwrap();
+                let _ = body.append_child(&dl_link).unwrap();
                 true
             }
             Msg::Files(files) => {
@@ -96,11 +77,11 @@ impl Component for App {
                             let last = *count.lock().unwrap() == 0;
                             log!("count: ", *count.lock().unwrap());
                             log!("file: ", &file_name);
-                            link.send_message(Msg::Loaded(file.1.clone(), res.unwrap(), last))
+                            //link.send_message(Msg::Loaded(file.1.clone(), res.unwrap(), last))
                         })
                     };
                     let w = window().unwrap().document().unwrap();
-                    self.readers.insert(f, task);
+                    self.readers.lock().unwrap().insert(f, task);
                 }
                 true
             }
@@ -108,6 +89,28 @@ impl Component for App {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let ctx_clone = ctx.link().clone(); // Clone the ctx reference
+        let z = self.zip.clone();
+        let x = self.comp_data.clone();
+        let y = self.readers.clone();
+
+        let cb = Callback::from(move |e: Event| {
+            let ctx_clone_inner = ctx_clone.clone();
+            let ccb = Callback::from(move |obj: ObjectUrl| {
+                ctx_clone_inner.send_message(Msg::Loaded(obj));
+            });
+            let input: HtmlInputElement = e.target_unchecked_into();
+            zip_wasm::wasm_zip(
+                input.files(),
+                ZipWasm {
+                    zip: z.clone(),
+                    comp_data: x.clone(),
+                    readers: y.clone(),
+                },
+                ccb,
+            );
+        });
+
         html! {
             <input
                 id="file-upload"
@@ -115,35 +118,9 @@ impl Component for App {
                 accept="*"
                 multiple={true}
                 webkitdirectory="true"
-                onchange={ctx.link().callback(move |e: Event| {
-                    let input: HtmlInputElement = e.target_unchecked_into();
-                    Self::upload_files(input.files())
-                    })}
+                onchange={cb}
             />
         }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct F {
-    #[serde(rename = "webkitRelativePath")]
-    webkit_relative_path: String,
-}
-impl App {
-    fn upload_files(files: Option<FileList>) -> Msg {
-        let mut result = Vec::new();
-
-        if let Some(files) = files {
-            log!("Files: {:?}", &files);
-            let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
-                let l: F = serde_wasm_bindgen::from_value(v.clone().unwrap()).unwrap();
-                let r = Some(l.webkit_relative_path).filter(|path| !path.is_empty());
-
-                (web_sys::File::from(v.unwrap()), r.unwrap())
-            });
-            result.extend(files);
-        }
-        Msg::Files(result)
     }
 }
 
