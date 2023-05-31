@@ -8,7 +8,6 @@ body {
   align-items: center;
   display: flex;
   justify-content: center;
-
   background: linear-gradient(to bottom right, #444444, #009a5b);
   font-size: 1.5rem;
 }
@@ -19,17 +18,32 @@ main {
   text-align: center;
 }
 
-.logo {
-  height: 20em;
-}
-
-.heart:after {
-  content: "❤️";
-
-  font-size: 1.75em;
-}
-
 h1 + .subtitle {
   display: block;
   margin-top: -1em;
 }
+
+/* Custom styles for the file upload element */
+#file-upload {
+  display: block;
+  width: 300px; /* Adjust the width as needed */
+  height: 100px; /* Adjust the height as needed */
+  border: 2px dashed #fff6d5; /* Custom border style */
+  border-radius: 10px; /* Rounded corners */
+  background-color: #444444; /* Custom background color */
+  color: #fff6d5; /* Custom text color */
+  font-size: 1.2rem; /* Custom font size */
+  font-weight: bold; /* Custom font weight */
+  text-align: center;
+  line-height: 100px; /* Vertically center the text */
+  cursor: pointer; /* Show pointer cursor on hover */
+}
+
+#file-upload:hover {
+  background-color: #009a5b; /* Custom background color on hover */
+}
+
+#file-upload::before {
+  content: "Drop files here or click to upload"; /* Custom text */
+}
+
