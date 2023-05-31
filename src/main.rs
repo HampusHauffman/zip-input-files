@@ -1,8 +1,3 @@
-//allow dead code
-use flate2::write::GzEncoder;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use flate2::GzBuilder;
 use gloo::console::log;
 use gloo::file::callbacks::FileReader;
 use gloo::file::Blob;
@@ -16,7 +11,6 @@ use std::sync::Mutex;
 use web_sys::window;
 use web_sys::File;
 use web_sys::FileList;
-use web_sys::FileSystemEntry;
 use web_sys::{Event, HtmlInputElement};
 use yew::html::TargetCast;
 use yew::{html, Component, Context, Html};
@@ -25,12 +19,11 @@ use zip::ZipWriter;
 
 struct FileDetails {
     name: String,
-    file_type: String,
     object_url: Option<ObjectUrl>,
 }
 
 pub enum Msg {
-    Loaded(String, String, Vec<u8>, bool),
+    Loaded(String, Vec<u8>, bool),
     Files(Vec<(File, String)>),
 }
 
@@ -54,10 +47,10 @@ impl Component for App {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Loaded(file_name, file_type, v, last) => {
+            Msg::Loaded(file_name, v, last) => {
                 let mut zip = self.zip.lock().unwrap();
                 zip.start_file(
-                    format!("{}{}", file_name.as_str(), last),
+                    format!("{}", file_name.as_str()),
                     FileOptions::default().compression_method(zip::CompressionMethod::DEFLATE),
                 )
                 .unwrap();
@@ -70,7 +63,6 @@ impl Component for App {
                     let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
                     self.file.push(FileDetails {
                         object_url: Some(object_url.clone()),
-                        file_type,
                         name: file_name.clone(),
                     });
 
@@ -92,9 +84,9 @@ impl Component for App {
             Msg::Files(files) => {
                 let count = Arc::new(Mutex::new(files.len()));
                 for file in files.into_iter() {
+                    let f = file.1.clone();
                     let count = count.clone();
                     let file_name = file.0.name();
-                    let file_type = file.0.type_();
                     let task = {
                         let link = ctx.link().clone();
                         let file_name = file_name.clone();
@@ -104,11 +96,11 @@ impl Component for App {
                             let last = *count.lock().unwrap() == 0;
                             log!("count: ", *count.lock().unwrap());
                             log!("file: ", &file_name);
-                            link.send_message(Msg::Loaded(file_name, file_type, res.unwrap(), last))
+                            link.send_message(Msg::Loaded(file.1.clone(), res.unwrap(), last))
                         })
                     };
                     let w = window().unwrap().document().unwrap();
-                    self.readers.insert(file.1, task);
+                    self.readers.insert(f, task);
                 }
                 true
             }
