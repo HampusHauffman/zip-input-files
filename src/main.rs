@@ -7,6 +7,7 @@ use gloo::console::log;
 use gloo::file::callbacks::FileReader;
 use gloo::file::Blob;
 use gloo::file::ObjectUrl;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::Cursor;
@@ -30,7 +31,7 @@ struct FileDetails {
 
 pub enum Msg {
     Loaded(String, String, Vec<u8>, bool),
-    Files(Vec<(File, FileSystemEntry)>),
+    Files(Vec<(File, String)>),
 }
 
 pub struct App {
@@ -107,7 +108,7 @@ impl Component for App {
                         })
                     };
                     let w = window().unwrap().document().unwrap();
-                    self.readers.insert(file_name, task);
+                    self.readers.insert(file.1, task);
                 }
                 true
             }
@@ -131,16 +132,22 @@ impl Component for App {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct F {
+    #[serde(rename = "webkitRelativePath")]
+    webkit_relative_path: String,
+}
 impl App {
     fn upload_files(files: Option<FileList>) -> Msg {
         let mut result = Vec::new();
+
         if let Some(files) = files {
             log!("Files: {:?}", &files);
             let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
-                (
-                    web_sys::File::from(v.clone().unwrap()),
-                    web_sys::FileSystemEntry::from(v.unwrap()),
-                )
+                let l: F = serde_wasm_bindgen::from_value(v.clone().unwrap()).unwrap();
+                let r = Some(l.webkit_relative_path).filter(|path| !path.is_empty());
+
+                (web_sys::File::from(v.unwrap()), r.unwrap())
             });
             result.extend(files);
         }
