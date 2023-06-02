@@ -1,5 +1,4 @@
 use futures::channel::mpsc;
-use futures::executor;
 use futures::StreamExt;
 use gloo::console::log;
 use gloo::file::Blob;
@@ -11,7 +10,6 @@ use std::io::Cursor;
 use std::io::Write;
 use std::rc::Rc;
 use web_sys::FileList;
-use yew::Callback;
 use zip::write::FileOptions;
 
 use zip::ZipWriter;

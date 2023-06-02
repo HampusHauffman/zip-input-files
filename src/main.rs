@@ -1,6 +1,5 @@
 mod zip_wasm;
 
-use gloo::console::log;
 use gloo::file::ObjectUrl;
 use web_sys::window;
 use web_sys::{Event, HtmlInputElement};
@@ -53,6 +52,7 @@ impl Component for App {
         let cb = Callback::from(move |e: Event| {
             let ctx_clone_inner = ctx_clone.clone();
             let input: HtmlInputElement = e.target_unchecked_into();
+
             wasm_bindgen_futures::spawn_local(async move {
                 let obj = zip_wasm::wasm_zip(input.files()).await;
                 ctx_clone_inner.send_message(Msg::Loaded(obj));
