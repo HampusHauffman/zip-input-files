@@ -2,10 +2,7 @@ mod zip_wasm;
 
 use gloo::console::log;
 use gloo::file::ObjectUrl;
-use std::sync::Arc;
-use std::sync::Mutex;
 use web_sys::window;
-use web_sys::File;
 use web_sys::{Event, HtmlInputElement};
 use yew::html::TargetCast;
 use yew::Callback;
@@ -54,27 +51,12 @@ impl Component for App {
         let ctx_clone2 = ctx.link().clone(); // Clone the ctx reference
 
         let cb = Callback::from(move |e: Event| {
-            log!(e.clone());
             let ctx_clone_inner = ctx_clone.clone();
-            let ccb = Callback::from(move |obj: ObjectUrl| {
-                log!("hej2");
+            let input: HtmlInputElement = e.target_unchecked_into();
+            wasm_bindgen_futures::spawn_local(async move {
+                let obj = zip_wasm::wasm_zip(input.files()).await;
                 ctx_clone_inner.send_message(Msg::Loaded(obj));
             });
-            let input: HtmlInputElement = e.target_unchecked_into();
-            log!("hej1");
-            zip_wasm::wasm_zip(input.files(), ccb);
-        });
-
-        let cb2 = Callback::from(move |e: Event| {
-            log!(e.clone());
-            let ctx_clone_inner = ctx_clone2.clone();
-            let ccb = Callback::from(move |obj: ObjectUrl| {
-                log!("hej2");
-                ctx_clone_inner.send_message(Msg::Loaded(obj));
-            });
-            let input: HtmlInputElement = e.target_unchecked_into();
-            log!("hej1");
-            zip_wasm::wasm_zip(input.files(), ccb);
         });
 
         html! {
@@ -87,13 +69,6 @@ impl Component for App {
                     directory="true"
                     webkitdirectory="true"
                     onchange={cb.clone()}
-                />
-                <input
-                    id="file-upload"
-                    type="file"
-                    accept="*"
-                    multiple={true}
-                    onchange={cb2}
                 />
             </>
         }

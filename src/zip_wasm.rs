@@ -1,3 +1,6 @@
+use futures::channel::mpsc;
+use futures::executor;
+use futures::StreamExt;
 use gloo::console::log;
 use gloo::file::Blob;
 use gloo::file::ObjectUrl;
@@ -19,10 +22,11 @@ struct FileProperties {
     webkit_relative_path: String,
 }
 
-pub fn wasm_zip(files: Option<FileList>, callback: Callback<ObjectUrl>) {
+pub async fn wasm_zip(files: Option<FileList>) -> ObjectUrl {
     let readers = Rc::new(RefCell::new(HashMap::new()));
     let zip = Rc::new(RefCell::new(ZipWriter::new(Cursor::new(Vec::new()))));
     let mut result = Vec::new();
+    let (done_sender, mut done_receiver) = mpsc::unbounded::<ObjectUrl>();
 
     if let Some(files) = files {
         let files = js_sys::try_iter(&files).unwrap().unwrap().map(|v| {
@@ -41,8 +45,8 @@ pub fn wasm_zip(files: Option<FileList>, callback: Callback<ObjectUrl>) {
         let count = count.clone();
         let name = file.0.clone();
         let r = readers.clone();
-        let cb = callback.clone();
         let zip = zip.clone();
+        let done_sender = done_sender.clone();
 
         let task = {
             gloo::file::callbacks::read_as_bytes(&file.1.into(), move |res| {
@@ -58,12 +62,16 @@ pub fn wasm_zip(files: Option<FileList>, callback: Callback<ObjectUrl>) {
                     let l = zip.borrow_mut().finish().unwrap().into_inner();
                     let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
                     log!("object_url: {:?}", object_url.to_string());
-                    cb.emit(object_url);
+                    let _ = done_sender.unbounded_send(object_url);
                     //Hack: prevent FireReader from dropping (JS->WASM bs)
                     r.borrow_mut().clear();
                 }
             })
         };
         readers.borrow_mut().insert(name, task);
+    }
+    match done_receiver.next().await {
+        Some(obj) => obj,
+        None => ObjectUrl::from(Blob::new("")),
     }
 }
