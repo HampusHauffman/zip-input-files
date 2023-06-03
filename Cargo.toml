@@ -1,6 +1,6 @@
 [package]
 name = "wasm-zip"
-version = "0.1.2"
+version = "0.1.4"
 edition = "2021"
 description = "Wasm zip"
 readme = "README.md"
