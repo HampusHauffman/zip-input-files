@@ -22,18 +22,27 @@ struct FileProperties {
 }
 
 #[wasm_bindgen]
-struct ZipFile {
+struct WasmZip {
     object_url: Vec<ObjectUrl>,
 }
 
 #[wasm_bindgen]
-impl ZipFile {
+impl WasmZip {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> ZipFile {
-        ZipFile {
+    pub fn new() -> WasmZip {
+        WasmZip {
             object_url: Vec::new(),
         }
     }
+
+    #[wasm_bindgen]
+    pub fn get_zip(&self) -> Vec<JsValue> {
+        self.object_url
+            .iter()
+            .map(|v| JsValue::from_str(v))
+            .collect()
+    }
+
     #[wasm_bindgen]
     pub async fn zip(&mut self, files: FileList) -> Result<JsValue, JsValue> {
         let readers = Rc::new(RefCell::new(HashMap::new()));
