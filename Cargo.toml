@@ -1,20 +1,18 @@
 [package]
 name = "wasm-zip"
-version = "0.1.9"
+version = "0.0.1"
 edition = "2021"
-description = "Wasm zip"
+description = "Wasm zip. Zip files using Web assembly."
 readme = "README.md"
 repository = "https://github.com/HampusHauffman/wasm-zip"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 keywords = ["Wasm", "zip", "Deflate"]
 categories = ["compression", "wasm", "zip"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-yew = { version="0.20", features=["csr"] }
 js-sys = "0.3.63"
 base64 = "0.21.2"
 gloo = "0.8.0"
