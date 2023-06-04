@@ -1,6 +1,5 @@
 use futures::channel::mpsc;
 use futures::StreamExt;
-use gloo::console::log;
 use gloo::file::Blob;
 use gloo::file::ObjectUrl;
 use serde::Deserialize;
@@ -22,8 +21,14 @@ struct FileProperties {
 }
 
 #[wasm_bindgen]
-struct WasmZip {
+pub struct WasmZip {
     object_url: Vec<ObjectUrl>,
+}
+
+impl Default for WasmZip {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[wasm_bindgen]
@@ -64,7 +69,6 @@ impl WasmZip {
         for file in result {
             let count = count.clone();
             let name = file.0.clone();
-            let r = readers.clone();
             let zip = zip.clone();
             let done_sender = done_sender.clone();
 
@@ -81,10 +85,7 @@ impl WasmZip {
                     if last {
                         let l = zip.borrow_mut().finish().unwrap().into_inner();
                         let object_url = ObjectUrl::from(Blob::new(l.as_slice()));
-                        log!("object_url: {:?}", object_url.to_string());
                         let _ = done_sender.unbounded_send(object_url);
-                        //Hack: prevent FireReader from dropping (JS->WASM bs)
-                        r.borrow_mut().clear();
                     }
                 })
             };
@@ -94,8 +95,9 @@ impl WasmZip {
             Some(obj) => obj,
             None => ObjectUrl::from(Blob::new("")),
         };
-        let l = object_url.clone();
-        self.object_url.push(l);
+        readers.borrow_mut().clear();
+        let obj_url_cp = object_url.clone();
+        self.object_url.push(obj_url_cp);
         Ok(JsValue::from_str(&object_url))
     }
 }
