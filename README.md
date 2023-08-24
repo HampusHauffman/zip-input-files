@@ -13,3 +13,4 @@ where `files: FileList` are the [FileList](https://developer.mozilla.org/en-US/d
 <a href={zipped_files} download="filename.zip">download the zip file</a>
 ```
 
+[NPM package](https://www.npmjs.com/package/zip-input-files)
